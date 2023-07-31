@@ -1,8 +1,3 @@
-/*
-Баги:
-квилин-ифрит, если сначала набрать скорость на квилине
- */
-
 // функция обработки физики троса
 ropePhysHandler = {
 	params ["_cargo", "_vehicle", "_rope"];
@@ -14,25 +9,27 @@ ropePhysHandler = {
 		_cargo disableBrakes true; 
 		_cargo awake true;
 		
-		_posBamVeh = _vehicle modelToWorld ([_vehicle, getPosATL _rope] call func_get_bamperPos);
-		_posBamCargo = _cargo modelToWorld ([_cargo, getPosATL _rope] call func_get_bamperPos);
-		_distance = _posBamVeh distance _posBamCargo;
+		private _posBamVeh = _vehicle modelToWorld ([_vehicle, getPosATL _rope] call func_get_bamperPos);
+		private _posBamCargo = _cargo modelToWorld ([_cargo, getPosATL _rope] call func_get_bamperPos);
+		private _distance = _posBamVeh distance _posBamCargo;
 
 		// ускорение техники
-		_vehMaxSpeed = getNumber (configfile >> "CfgVehicles" >> typeOf _vehicle >> "maxSpeed");
+		private _massDiff = (getMass _vehicle / getMass _cargo);
+		private _vehMaxSpeed = getNumber (configfile >> "CfgVehicles" >> typeOf _vehicle >> "maxSpeed");
 		if (
 			_distance > (ropeLength _rope) && // если трос натянут
 			{abs speed _vehicle > 0.1 && // если тягач не стоит
 			{abs speed _cargo > 0.1 && // если груз не стоит
-			{abs speed _vehicle < _vehMaxSpeed * _vehicleSpeedCoeff && // если скорость не выше предела
+			{abs speed _vehicle < _vehMaxSpeed * _vehicleSpeedCoeff * _massDiff && // если скорость не выше предела
 			{vectorMagnitude ((surfaceNormal (getPosATL _vehicle)) vectorDiff (vectorUp _vehicle)) < 0.1 // если тягач не перевернут
 		}}}}) then {
-			private _massDiff = (getMass _vehicle / getMass _cargo); // масса
 			private _k = (speed _vehicle / abs speed _vehicle); // вперёд/назад
-			private _impulse = -0.1 * (abs speed _vehicle - abs speed _cargo) / _massDiff; // отрицательный импульс от груза
 
-			private _force = [0, 500 * _impulse, -1000 * abs _impulse];
-			hint str _force;
+			private _boost = 666;
+			private _impulse = -1 * (abs speed _vehicle - abs speed _cargo) / _massDiff; // отрицательный импульс от груза
+
+			private _force = 50 * _impulse + _boost;
+			_force = [0, _force * _k,  abs _force * -2];
 			_force = _cargo vectorModelToWorldVisual _force;
 			_vehicle addForce [_force, boundingCenter _vehicle];
 		};
