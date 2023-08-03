@@ -12,18 +12,22 @@ ropePhysHandler = {
 		private _posBamVeh = _vehicle modelToWorld ([_vehicle, getPosATL _rope] call func_get_bamperPos);
 		private _posBamCargo = _cargo modelToWorld ([_cargo, getPosATL _rope] call func_get_bamperPos);
 
-		private _speedVeh = vectorMagnitude velocity _vehicle * 3.6;
-		private _speedCargo = vectorMagnitude velocity _cargo * 3.6;
-
-		private _distance = _posBamVeh distance _posBamCargo;
+		
 		// направление относительно к переду или заду подцепили груз
 		private _dirCargo = (_cargo modelToWorldVisual [0,0,0]) getDirVisual ((ropeEndPosition _rope) # 1);
 		private _dir = (getPosATL _cargo) getDirVisual (getPosATL _vehicle);
 		_dir = [_dir - _dirCargo, 360 - (_dirCargo - _dir)] select (_dir < _dirCargo);
-		
-		// ускорение/замедление техники
+		// направление независимо от стороны - правой или левой
+		private _sideDir = ([abs (_dir - 180), abs (180 - _dir)] select (abs (180 - _dir) < 90));
+		_sideDir = 180 - _sideDir;
+
+		private _distance = _posBamVeh distance _posBamCargo;
+		private _speedVeh = vectorMagnitude velocity _vehicle * 3.6;
+		private _speedCargo = vectorMagnitude velocity _cargo * 3.6;
 		private _massDiff = (getMass _vehicle / getMass _cargo);
 		private _vehMaxSpeed = getNumber (configfile >> "CfgVehicles" >> typeOf _vehicle >> "maxSpeed");
+		
+		// ускорение/замедление техники
 		if (
 			_speedCargo > 0.1 && // если груз не стоит
 			{vectorMagnitude ((surfaceNormal (getPosATL _vehicle)) vectorDiff (vectorUp _vehicle)) < 0.1 && // если тягач не перевернут
@@ -53,18 +57,19 @@ ropePhysHandler = {
 
 		// поворот техники
 		private _sideDir = ([abs (_dir - 180), abs (180 - _dir)] select (abs (180 - _dir) < 90));
+		_sideDir = 180 - _sideDir;
 		if (
 			_distance > (ropeLength _rope) &&
-			{_sideDir > 1 &&
 			{_speedVeh > 0.1 &&
 			{_speedCargo > 0.1 &&
 			{getPosATL _cargo # 2 < 1 && // если груз на земле
 			{vectorMagnitude ((surfaceNormal (getPosATL _cargo)) vectorDiff (vectorUp _cargo)) < 0.1 // если груз не перевернут
-		}}}}}) then {
+		}}}}) then {
 			private _k = [1, -1] select ((_dir - 180) > 0); // [вправо, влево]
 			private _m = [1, -1] select (abs (_dir - 180) < 90); // [вперёд, назад]
 
-			private _force = [30 * _k * _m, 0, 0];
+			private _force = [_sideDir ^ 2, 30] select (_sideDir > 5);
+			_force = [_force * _k * _m, 0, 0];
 			_force = _cargo vectorModelToWorldVisual _force;
 			_cargo addForce [_force, [0, 50 * _m, 0]];
 		};
@@ -79,7 +84,6 @@ ropePhysHandler = {
 			private _k = [1, -1] select ((_dir - 180) > 0); // [вправо, влево]
 			private _m = [1, -1] select (abs (_dir - 180) < 90); // [вперёд, назад]
 
-			private _sideDir = ([abs (_dir - 180), abs (180 - _dir)] select (abs (180 - _dir) < 90));
 			// [x,y,z] +x - право -x - лево +y - вперёд -y - назад
 			private _force = [[0, 6000 * _m, -12000], [1000 * _k, 0,  0]] select (_sideDir >= 45 && {_sideDir < 135});
 			_force = _cargo vectorModelToWorldVisual _force;
@@ -518,7 +522,7 @@ addActions = {
         [player] call attachRope;
     }, nil, 0, false, true, "", "call canAttach"];
 
-	player addAction ["<t color='#4682B4'>Открепить</t> трос", {
+	player addAction ["<t color='#4682B4'>Свернуть</t> трос", {
         [player] call detachRope;
     }, nil, 0, false, true, "", "call canDetach"];
 
