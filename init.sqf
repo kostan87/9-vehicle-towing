@@ -11,46 +11,79 @@ ropePhysHandler = {
 		
 		private _posBamVeh = _vehicle modelToWorld ([_vehicle, getPosATL _rope] call func_get_bamperPos);
 		private _posBamCargo = _cargo modelToWorld ([_cargo, getPosATL _rope] call func_get_bamperPos);
-		private _distance = _posBamVeh distance _posBamCargo;
 
-		// ускорение техники
+		private _speedVeh = vectorMagnitude velocity _vehicle * 3.6;
+		private _speedCargo = vectorMagnitude velocity _cargo * 3.6;
+
+		private _distance = _posBamVeh distance _posBamCargo;
+		// направление относительно к переду или заду подцепили груз
+		private _dirCargo = (_cargo modelToWorldVisual [0,0,0]) getDirVisual ((ropeEndPosition _rope) # 1);
+		private _dir = (getPosATL _cargo) getDirVisual (getPosATL _vehicle);
+		_dir = [_dir - _dirCargo, 360 - (_dirCargo - _dir)] select (_dir < _dirCargo);
+		
+		// ускорение/замедление техники
 		private _massDiff = (getMass _vehicle / getMass _cargo);
 		private _vehMaxSpeed = getNumber (configfile >> "CfgVehicles" >> typeOf _vehicle >> "maxSpeed");
 		if (
-			_distance > (ropeLength _rope) && // если трос натянут
-			{abs speed _vehicle > 0.1 && // если тягач не стоит
-			{abs speed _cargo > 0.1 && // если груз не стоит
-			{abs speed _vehicle < _vehMaxSpeed * _vehicleSpeedCoeff * _massDiff && // если скорость не выше предела
-			{vectorMagnitude ((surfaceNormal (getPosATL _vehicle)) vectorDiff (vectorUp _vehicle)) < 0.1 // если тягач не перевернут
-		}}}}) then {
-			private _k = (speed _vehicle / abs speed _vehicle); // вперёд/назад
+			_speedCargo > 0.1 && // если груз не стоит
+			{vectorMagnitude ((surfaceNormal (getPosATL _vehicle)) vectorDiff (vectorUp _vehicle)) < 0.1 && // если тягач не перевернут
+			{vectorMagnitude ((surfaceNormal (getPosATL _cargo)) vectorDiff (vectorUp _cargo)) < 0.1 // если груз не перевернут
+		}}) then {
+			private _k = speed _cargo / abs speed _cargo; // направление скорости груза
+			private _m = [1, -1] select (abs (_dir - 180) < 90); // [вперёд, назад]
 
-			private _boost = 666;
-			private _impulse = -1 * (abs speed _vehicle - abs speed _cargo) / _massDiff; // отрицательный импульс от груза
+			if (
+				_distance > (ropeLength _rope) && // если трос натянут
+				{_speedVeh > 0.1 && // если тягач не стоит
+				{_speedVeh < _vehMaxSpeed * _vehicleSpeedCoeff * _massDiff // если скорость не выше предела
+			}}) then {
+				private _boost = 800;
+				private _impulse = -1 * (abs speed _vehicle - abs speed _cargo) / _massDiff; // отрицательный импульс от груза
+				private _acceleration = 50 * _impulse + _boost;
 
-			private _force = 50 * _impulse + _boost;
-			_force = [0, _force * _k,  abs _force * -2];
+				_acceleration = [0, _acceleration * _m,  abs _acceleration * -2];
+				_acceleration = _vehicle vectorModelToWorldVisual _acceleration;
+				_vehicle addForce [_acceleration, boundingCenter _vehicle];
+			};
+
+			private _deceleration = [0, -500 * _k,  -1000];
+			_deceleration = _cargo vectorModelToWorldVisual _deceleration;
+			_cargo addForce [_deceleration, boundingCenter _cargo];
+		};
+
+		// поворот техники
+		private _sideDir = ([abs (_dir - 180), abs (180 - _dir)] select (abs (180 - _dir) < 90));
+		if (
+			_distance > (ropeLength _rope) &&
+			{_sideDir > 1 &&
+			{_speedVeh > 0.1 &&
+			{_speedCargo > 0.1 &&
+			{getPosATL _cargo # 2 < 1 && // если груз на земле
+			{vectorMagnitude ((surfaceNormal (getPosATL _cargo)) vectorDiff (vectorUp _cargo)) < 0.1 // если груз не перевернут
+		}}}}}) then {
+			private _k = [1, -1] select ((_dir - 180) > 0); // [вправо, влево]
+			private _m = [1, -1] select (abs (_dir - 180) < 90); // [вперёд, назад]
+
+			private _force = [30 * _k * _m, 0, 0];
 			_force = _cargo vectorModelToWorldVisual _force;
-			_vehicle addForce [_force, boundingCenter _vehicle];
+			_cargo addForce [_force, [0, 50 * _m, 0]];
 		};
 
 		// срыв тормоза колёс
 		if (
 			_distance > (ropeLength _rope) &&
-			{abs speed _vehicle > 0.1 &&
-			{abs speed _cargo < 0.1 &&
+			{_speedVeh > 0.1 &&
+			{_speedCargo < 0.1 &&
 			{vectorMagnitude ((surfaceNormal (getPosATL _cargo)) vectorDiff (vectorUp _cargo)) < 0.1
 		}}}) then {
-			private _dir = _cargo getRelDir (getPosATL _vehicle);
-
 			private _k = [1, -1] select ((_dir - 180) > 0); // [вправо, влево]
 			private _m = [1, -1] select (abs (_dir - 180) < 90); // [вперёд, назад]
 
 			private _sideDir = ([abs (_dir - 180), abs (180 - _dir)] select (abs (180 - _dir) < 90));
-			private _force = [[0, 1500 * _m, -2000], [1000 * _k, 0,  0]] select (_sideDir >= 45 && {_sideDir < 135});
-
+			// [x,y,z] +x - право -x - лево +y - вперёд -y - назад
+			private _force = [[0, 6000 * _m, -12000], [1000 * _k, 0,  0]] select (_sideDir >= 45 && {_sideDir < 135});
 			_force = _cargo vectorModelToWorldVisual _force;
-			_cargo addForce [_force, boundingCenter _cargo]; // [x,y,z] +x - право -x - лево +y - вперёд -y - назад
+			_cargo addForce [_force, boundingCenter _cargo]; 
 		};
 		sleep 0.01;
 	};
@@ -426,6 +459,7 @@ attachRope = {
 canDetach = {
 	private _vehicle = cursorObject;
 
+	// три проверки на игрока
 	!isPlayer _vehicle && // for player
 	((count ropeAttachedObjects _vehicle > 0) && {!isPlayer (ropeAttachedObjects _vehicle # 0)} || // for vehicle
 	(count ropesAttachedTo _vehicle > 0) && {!isPlayer (ropesAttachedTo _vehicle # 0)}) && // for cargo
